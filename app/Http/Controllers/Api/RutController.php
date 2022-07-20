@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Helpers\RutFormat;
-use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Http;
 use Symfony\Component\DomCrawler\Crawler;
 
 
@@ -20,11 +20,6 @@ class RutController extends Controller
     const XPATH_AUTORIZADO_MONEDA_EXTRANJERA = '//html/body/div/span[4]';
     const XPATH_EMPRESA_MENOR_TAMANO_PRO_PYME = '//html/body/div/span[5]';
     const XPATH_ACTIVITIES   = '//html/body/div/table[1]/tr';
-    // [3]/tr
-    public function __construct()
-    {
-        $this->client = new Client();
-    }
 
     public function index($rut)
     {
@@ -59,7 +54,7 @@ class RutController extends Controller
         });
 
         $documentos = [];
-        $crawler->filter('table')->last()->filter('tr') -> each(function (Crawler $node, $i) use  (&$documentos) {
+        $crawler->filter('table')->last()->filter('tr')->each(function (Crawler $node, $i) use (&$documentos) {
             if ($i > 0) {
                 $documentos[] = [
                     'tipo_documento'      => $node->filterXPath('//td[1]/font')->text(),
@@ -92,16 +87,13 @@ class RutController extends Controller
         $rut = new RutFormat(trim($rut));
         $url = "https://zeus.sii.cl/cvc_cgi/stc/getstc";
         $captcha = self::fetchCaptcha();
-        $response = $this->client->post($url, [
-            'headers' => ['Content-Type: application/x-www-form-urlencoded'],
-            'form_params' => [
-                'RUT' => $rut->number,
-                'DV'  => $rut->code,
-                'PRG' => 'STC',
-                'OPC' => 'NOR',
-                'txt_code' => $captcha['code'],
-                'txt_captcha' => $captcha['txtCaptcha']
-            ]
+        $response = Http::asForm()->post($url, [
+            'RUT' => $rut->number,
+            'DV'  => $rut->code,
+            'PRG' => 'STC',
+            'OPC' => 'NOR',
+            'txt_code' => $captcha['code'],
+            'txt_captcha' => $captcha['txtCaptcha']
         ]);
         return $response->getBody()->getContents();
     }
@@ -109,16 +101,13 @@ class RutController extends Controller
     public function fetchCaptcha()
     {
         $url = "https://zeus.sii.cl/cvc_cgi/stc/CViewCaptcha.cgi";
-        $response = $this->client->post($url, [
-            'headers' => ['Content-Type: application/x-www-form-urlencoded'],
-            'form_params' => [
-                'oper' => 0,
-            ]
+        $response = Http::asForm()->post($url, [
+            'oper' => 0
         ]);
-        $data = json_decode($response->getBody(), true);
-        $code = substr(base64_decode($data['txtCaptcha']), 36, 4);
+        $response = json_decode($response->body(), true);
+        $code = substr(base64_decode($response['txtCaptcha']), 36, 4);
         return [
-            "txtCaptcha" => $data['txtCaptcha'],
+            "txtCaptcha" => $response['txtCaptcha'],
             "code" => $code
         ];
     }
